@@ -15,9 +15,9 @@ import (
 )
 
 type server struct {
-	httpServer 	*http.Server
-	cancel 			context.CancelFunc
-	logger 			*slog.Logger
+	httpServer *http.Server
+	cancel     context.CancelFunc
+	logger     *slog.Logger
 }
 
 func NewServer(port int, cancel context.CancelFunc, logger *slog.Logger) *server {
@@ -26,7 +26,7 @@ func NewServer(port int, cancel context.CancelFunc, logger *slog.Logger) *server
 
 	srv := &http.Server{
 		Addr:    fmt.Sprintf(":%d", port),
-		Handler: reqLoggerMiddleware(logger)(mux),  // Wrap the mux with the request logging middleware to log all incoming requests.
+		Handler: reqLoggerMiddleware(logger)(mux), // Wrap the mux with the request logging middleware to log all incoming requests.
 	}
 
 	s := &server{
@@ -35,7 +35,7 @@ func NewServer(port int, cancel context.CancelFunc, logger *slog.Logger) *server
 		logger:     logger,
 	}
 
-	// Define routes and handlers for the HTTP server. 
+	// Define routes and handlers for the HTTP server.
 	mux.HandleFunc("/users", s.handleUsers)
 
 	return s
@@ -94,7 +94,7 @@ func (w *responseWriterWithContext) Context() context.Context {
 func reqLoggerMiddleware(logger *slog.Logger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		
+
 			requestID := uuid.NewString()
 
 			reqLogger := logger.With(
@@ -104,7 +104,7 @@ func reqLoggerMiddleware(logger *slog.Logger) func(http.Handler) http.Handler {
 				slog.String("remote_addr", r.RemoteAddr),
 			)
 
-			// Create a custom context that includes the request-specific logger. 
+			// Create a custom context that includes the request-specific logger.
 			// This context is kept separate from r.Context() to demonstrate an alternative pattern
 			// where framework data doesn't inflate the request context.
 			ctx := logx.WithLogger(r.Context(), reqLogger)

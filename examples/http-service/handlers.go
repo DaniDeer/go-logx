@@ -12,9 +12,8 @@ import (
 	"github.com/DaniDeer/go-logx/logx"
 )
 
-
 func (s *server) handleUsers(w http.ResponseWriter, r *http.Request) {
-	
+
 	// Extract the custom context from the response writer instead of using r.Context().
 	// This demonstrates accessing framework-specific data (like the logger with request attributes)
 	// without inflating the request's context. The middleware wraps the ResponseWriter with a
@@ -61,7 +60,7 @@ func (s *server) handleUsers(w http.ResponseWriter, r *http.Request) {
 	)
 
 	// Validate each user and return an error if validation fails. The error will include structured attributes for the user ID and email, which will help with debugging.
-	// This time we do not pass the context to validateUser, because it does not need to log with the request-specific information. 
+	// This time we do not pass the context to validateUser, because it does not need to log with the request-specific information.
 	// Instead, it returns an error with structured attributes that can be wrapped and logged by the caller.
 	for _, user := range users {
 		if err := validateUser(user); err != nil {
@@ -94,13 +93,13 @@ func (s *server) handleUsers(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// fetchUsers simulates a database query to fetch users. 
+// fetchUsers simulates a database query to fetch users.
 // It logs the start and completion of the database query, and returns a list of users or an error if the query fails.
 // It accesses the logger from the context, which allows it to log with the same request-specific information that was added by the middleware.
 func fetchUsers(ctx context.Context) ([]User, error) {
-	
+
 	// The logger is of type *slog.Logger, which is the standard logger type used by the slog package.
-	// By using dependency injection to pass the logger to the application that implements the business logic, 
+	// By using dependency injection to pass the logger to the application that implements the business logic,
 	// we can ensure that all parts of the application have access to the same logger instance and can log with consistent structured attributes.
 	logger := logx.FromContext(ctx)
 

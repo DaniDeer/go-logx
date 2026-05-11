@@ -26,14 +26,14 @@ func main() {
 		FileLevel:   slog.LevelInfo,
 	})
 
-	// A valid use case to bypass the logger is ofc when the logger itself fails to initialize. 
+	// A valid use case to bypass the logger is ofc when the logger itself fails to initialize.
 	// In that case, we print the error to stderr and exit with a non-zero status code.
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to initialize logger: %v\n", err)
 		os.Exit(1)
 	}
 
-	// Instead of defer cleanup(), we call it explicitly and log any errors it returns. 
+	// Instead of defer cleanup(), we call it explicitly and log any errors it returns.
 	// This ensures that we handle cleanup errors properly.
 	defer func() {
 		if err := cleanup(); err != nil {
@@ -71,4 +71,3 @@ func run(ctx context.Context, cancel context.CancelFunc, logger *slog.Logger) in
 
 	return 0
 }
-

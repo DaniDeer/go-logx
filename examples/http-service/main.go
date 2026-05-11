@@ -34,7 +34,7 @@ func main() {
 
 func run(ctx context.Context, cancel context.CancelFunc, httpPort int) int {
 
-	// Initialize the logger with the desired configuration. 
+	// Initialize the logger with the desired configuration.
 	// If initialization fails, print the error to stderr and exit with a non-zero status code.
 	logger, cleanup, err := logx.New(logx.Config{
 		Level:       slog.LevelDebug,
@@ -133,6 +133,3 @@ func handleUsers(
 
 	return nil
 }
-
-
-

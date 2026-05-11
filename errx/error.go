@@ -64,12 +64,28 @@ func With(err error, args ...any) error {
 	}
 }
 
+// stackProvider is implemented by errors that carry normalized stack frames.
+// *errx.Error satisfies this natively. External error types may implement
+// StackFrames() []StackFrame to integrate fully with errx's display logic.
+type stackProvider interface {
+	StackFrames() []StackFrame
+}
+
+// stackTracer is a generic interface for external errors that carry a stack trace
+// and can express it as an untyped value. Errors that implement StackTrace() any
+// satisfy this interface and are detected before the reflect fallback.
+// Note: pkg/errors errors do NOT satisfy this — their StackTrace() returns a
+// concrete type, not any. Those are handled by the reflect fallback.
+type stackTracer interface {
+	StackTrace() any
+}
+
 // hasStack reports whether the error chain already carries a stack trace.
-// Detects *errx.Error stacks natively, and external stacks from any error that
-// implements a StackTrace() method (pkg/errors, cockroachdb/errors, etc.).
+// Detection is layered: (1) stackProvider (errx-native), (2) stackTracer (explicit
+// external contract), (3) reflect fallback for pkg/errors and similar libraries.
 func hasStack(err error) bool {
 	for err != nil {
-		if ee, ok := err.(*Error); ok && len(ee.stack) > 0 {
+		if sp, ok := err.(stackProvider); ok && len(sp.StackFrames()) > 0 {
 			return true
 		}
 		if externalStack(err) {
@@ -80,10 +96,22 @@ func hasStack(err error) bool {
 	return false
 }
 
-// externalStack detects stack traces from external error packages by checking for
-// a StackTrace() method via reflection. This avoids importing any external package
-// while remaining compatible with pkg/errors, cockroachdb/errors, and others.
+// externalStack detects stack traces from external error packages.
+// It tries the stackTracer interface first (explicit contract), then falls back
+// to reflection for libraries like pkg/errors whose StackTrace() returns a
+// concrete type that cannot satisfy a generic interface.
 func externalStack(err error) bool {
+	var st stackTracer
+	if errors.As(err, &st) {
+		return stackValueNonEmpty(reflect.ValueOf(st.StackTrace()))
+	}
+	return reflectHasStack(err)
+}
+
+// reflectHasStack detects a StackTrace() method on err via reflection.
+// Used as a last resort for libraries (e.g. pkg/errors) that define StackTrace()
+// with a concrete return type, which prevents interface matching.
+func reflectHasStack(err error) bool {
 	rv := reflect.ValueOf(err)
 	if !rv.IsValid() {
 		return false
@@ -96,14 +124,22 @@ func externalStack(err error) bool {
 	if mt.NumIn() != 0 || mt.NumOut() != 1 {
 		return false
 	}
-	result := m.Call(nil)[0]
-	switch result.Kind() {
-	case reflect.Slice:
-		return result.Len() > 0
-	case reflect.Ptr, reflect.Interface:
-		return !result.IsNil()
+	return stackValueNonEmpty(m.Call(nil)[0])
+}
+
+// stackValueNonEmpty reports whether rv represents a non-empty stack value.
+// Handles all nilable kinds to avoid reflect.Value.IsNil panics.
+func stackValueNonEmpty(rv reflect.Value) bool {
+	if !rv.IsValid() {
+		return false
+	}
+	switch rv.Kind() {
+	case reflect.Slice, reflect.Array:
+		return rv.Len() > 0
+	case reflect.Ptr, reflect.Interface, reflect.Map, reflect.Chan, reflect.Func:
+		return !rv.IsNil()
 	default:
-		return result.IsValid()
+		return true
 	}
 }
 
@@ -117,6 +153,12 @@ func (e *Error) Unwrap() error {
 
 func (e *Error) Attrs() []slog.Attr {
 	return e.attrs
+}
+
+// StackFrames returns the stack frames captured for this error.
+// It satisfies the stackProvider interface.
+func (e *Error) StackFrames() []StackFrame {
+	return e.stack
 }
 
 func callers(skip int) []StackFrame {

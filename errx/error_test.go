@@ -300,27 +300,51 @@ func Test_With_singleStackPerChain(t *testing.T) {
 
 func Test_hasStack_externalProvider(t *testing.T) {
 	tests := []struct {
-		name    string
-		err     error
-		want    bool
+		name string
+		err  error
+		want bool
 	}{
+		// Layer 1: stackProvider (StackFrames() []StackFrame)
 		{
-			name: "detects non-empty StackTrace() slice",
+			name: "stackProvider: non-empty frames detected",
+			err:  &fakeProvider{frames: []StackFrame{{Function: "f", File: "f.go", Line: 1}}},
+			want: true,
+		},
+		{
+			name: "stackProvider: empty frames not detected",
+			err:  &fakeProvider{frames: nil},
+			want: false,
+		},
+		// Layer 2: stackTracer (StackTrace() any)
+		{
+			name: "stackTracer: non-empty slice detected",
+			err:  &fakeTracer{stack: []string{"frame1"}},
+			want: true,
+		},
+		{
+			name: "stackTracer: nil slice not detected",
+			err:  &fakeTracer{stack: nil},
+			want: false,
+		},
+		// Layer 3: reflect fallback (concrete StackTrace() return type, e.g. pkg/errors)
+		{
+			name: "reflect fallback: non-empty []uintptr detected",
 			err:  &fakeStackErr{frames: []uintptr{1, 2, 3}},
 			want: true,
 		},
 		{
-			name: "ignores empty StackTrace() slice",
+			name: "reflect fallback: nil []uintptr not detected",
 			err:  &fakeStackErr{frames: nil},
 			want: false,
 		},
+		// Chain traversal
 		{
 			name: "plain error has no stack",
 			err:  errors.New("plain"),
 			want: false,
 		},
 		{
-			name: "detects external stack in wrapped chain",
+			name: "reflect fallback detected in wrapped chain",
 			err:  fmt.Errorf("wrapping: %w", &fakeStackErr{frames: []uintptr{1}}),
 			want: true,
 		},
@@ -345,15 +369,34 @@ func Test_Wrap_skipsStackForExternalProvider(t *testing.T) {
 	}
 }
 
-// fakeStackErr simulates an error from pkg/errors or similar that exposes StackTrace().
+// fakeProvider satisfies stackProvider — layer 1.
+type fakeProvider struct {
+	frames []StackFrame
+}
+
+func (e *fakeProvider) Error() string             { return "fake provider error" }
+func (e *fakeProvider) StackFrames() []StackFrame { return e.frames }
+
+// fakeTracer satisfies stackTracer (StackTrace() any) — layer 2.
+type fakeTracer struct {
+	stack []string
+}
+
+func (e *fakeTracer) Error() string { return "fake tracer error" }
+func (e *fakeTracer) StackTrace() any {
+	if e.stack == nil {
+		return ([]string)(nil)
+	}
+	return e.stack
+}
+
+// fakeStackErr simulates pkg/errors: StackTrace() returns a concrete type — layer 3 (reflect).
 type fakeStackErr struct {
 	frames []uintptr
 }
 
 func (e *fakeStackErr) Error() string         { return "fake external error" }
 func (e *fakeStackErr) StackTrace() []uintptr { return e.frames }
-
-
 
 func assertAttrs(t *testing.T, got, want []slog.Attr) {
 	if len(got) != len(want) {
