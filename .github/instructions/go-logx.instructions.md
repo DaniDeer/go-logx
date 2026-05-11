@@ -95,7 +95,7 @@ err = errx.With(
 
 Pass `errx` errors via `slog.Any("error", err)`. The `*errx.Error` value implements `slog.LogValuer` and emits a self-contained group with `message`, attrs, `stack_trace`, and `cause`. Attrs from the entire error chain are merged; the outermost error's attrs take precedence (first key wins).
 
-**Only one `stack_trace` per error chain.** `errx.Wrap` and `errx.With` only call `runtime.Callers` if no `*errx.Error` with a stack already exists in the chain. The stack is always from the innermost `*errx.Error` — the point closest to the error origin. It appears at the top level of the serialized group. Cause chain entries contain `message` and attrs only.
+**Only one `stack_trace` per error chain.** `errx.Wrap` and `errx.With` call `runtime.Callers` only when no existing stack is detected in the inner error chain. Detection is generic via `hasStack(err)`, which checks for `*errx.Error` stacks natively and for any error with a `StackTrace()` method (e.g. `pkg/errors`, `cockroachdb/errors`) via reflection. The displayed stack is always from the innermost `*errx.Error` — the point closest to the error origin. Cause chain entries contain `message` and attrs only.
 
 ```go
 logger.Error("request failed", slog.Any("error", err))

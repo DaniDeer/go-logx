@@ -173,9 +173,30 @@ group := attr.Group("request",
 merged := attr.Merge(outerAttrs, innerAttrs)
 ```
 
+## External Stack Providers
+
+`errx.Wrap` and `errx.With` detect existing stack traces via reflection before calling `runtime.Callers`. Any error that implements a `StackTrace()` method — including [`pkg/errors`](https://pkg.go.dev/github.com/pkg/errors), [`cockroachdb/errors`](https://pkg.go.dev/github.com/cockroachdb/errors), and similar libraries — is recognised automatically. No imports of those packages are required in `errx` itself.
+
+```go
+import pkgerrors "github.com/pkg/errors"
+
+func fetchUser(id string) error {
+    err := queryDB()                          // returns a pkg/errors error (has a stack)
+    return errx.Wrap(err,                     // detects existing stack; skips runtime.Callers
+        "failed to fetch user",
+        "user_id", id,
+    )
+}
+```
+
+The errx attrs (`user_id`, message) are attached normally. The pkg/errors stack remains accessible through its own API. Only one stack allocation occurs per chain.
+
+See [`examples/pkg-errors`](examples/pkg-errors/main.go) for a runnable example.
+
 ---
 
 ## Examples
 
 - [`examples/basic`](examples/basic/main.go) — `logx.New` with console + file output and `errx.Wrap`
 - [`examples/http-service`](examples/http-service/) — HTTP server with request-ID middleware, context logger propagation, and structured error handling per request
+- [`examples/pkg-errors`](examples/pkg-errors/main.go) — integrating `pkg/errors` with `errx` (standalone module)

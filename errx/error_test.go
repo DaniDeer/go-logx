@@ -2,6 +2,7 @@ package errx
 
 import (
 	"errors"
+	"fmt"
 	"log/slog"
 	"testing"
 )
@@ -297,7 +298,67 @@ func Test_With_singleStackPerChain(t *testing.T) {
 	}
 }
 
+func Test_hasStack_externalProvider(t *testing.T) {
+	tests := []struct {
+		name    string
+		err     error
+		want    bool
+	}{
+		{
+			name: "detects non-empty StackTrace() slice",
+			err:  &fakeStackErr{frames: []uintptr{1, 2, 3}},
+			want: true,
+		},
+		{
+			name: "ignores empty StackTrace() slice",
+			err:  &fakeStackErr{frames: nil},
+			want: false,
+		},
+		{
+			name: "plain error has no stack",
+			err:  errors.New("plain"),
+			want: false,
+		},
+		{
+			name: "detects external stack in wrapped chain",
+			err:  fmt.Errorf("wrapping: %w", &fakeStackErr{frames: []uintptr{1}}),
+			want: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := hasStack(tt.err); got != tt.want {
+				t.Errorf("hasStack() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func Test_Wrap_skipsStackForExternalProvider(t *testing.T) {
+	ext := &fakeStackErr{frames: []uintptr{1, 2, 3}}
+	wrapped := Wrap(ext, "service layer", "component", "api")
+
+	e := wrapped.(*Error)
+	if len(e.stack) != 0 {
+		t.Error("Wrap should not capture a stack when inner error has external StackTrace()")
+	}
+}
+
+// fakeStackErr simulates an error from pkg/errors or similar that exposes StackTrace().
+type fakeStackErr struct {
+	frames []uintptr
+}
+
+func (e *fakeStackErr) Error() string         { return "fake external error" }
+func (e *fakeStackErr) StackTrace() []uintptr { return e.frames }
+
+
+
 func assertAttrs(t *testing.T, got, want []slog.Attr) {
+	if len(got) != len(want) {
+		t.Fatalf("attrs len = %d, want %d; got %v", len(got), len(want), got)
+	}
 
 	for i := range got {
 		if !got[i].Equal(want[i]) {
