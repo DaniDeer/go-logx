@@ -39,9 +39,7 @@ func New(config Config) (*slog.Logger, Cleanup, error) {
 			)
 		}
 
-		handlers = append(handlers,
-			NewErrorHandler(console),
-		)
+		handlers = append(handlers, console)
 	}
 
 	// If a file is specified, set up a lumberjack logger for log rotation and buffering for performance.
@@ -66,9 +64,7 @@ func New(config Config) (*slog.Logger, Cleanup, error) {
 			},
 		)
 
-		handlers = append(handlers,
-			NewErrorHandler(fileHandler),
-		)
+		handlers = append(handlers, fileHandler)
 
 		// Add a closer to flush the buffer and close the rotating logger when cleaning up.
 		closers = append(closers,

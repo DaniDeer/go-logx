@@ -102,7 +102,9 @@ defer func() {
 
 ### `errx` — Structured Errors
 
-Errors created with `errx` carry structured `slog.Attr` values and a stack trace. When logged via `slog.Any("error", err)`, the `ErrorHandler` inside `logx` automatically extracts these attrs and adds them to the log record.
+Errors created with `errx` carry structured `slog.Attr` values and a stack trace. When logged via `slog.Any("error", err)`, all error context appears **nested inside the `"error"` group** — nothing is promoted to the top level of the log record.
+
+This is by design: each error is self-contained. Attrs, stack trace, and the cause chain all live under `"error"`, so they never collide with attrs set on the logger itself (e.g. request-scoped fields from middleware).
 
 #### Creating Errors
 
@@ -131,26 +133,26 @@ err = errx.With(
 
 #### Log Output
 
-`*errx.Error` implements `slog.LogValuer` and emits a structured group when serialized. The `ErrorHandler` inside `logx` also extracts attrs from the error chain and adds them at the top level of the log record. As a result, structured attrs appear **twice**: nested under `"error"` (from `LogValuer`) and at the top level (from `ErrorHandler`).
+`*errx.Error` implements `slog.LogValuer` and serializes as a self-contained group. Attrs from the entire error chain are merged; the outermost error's attrs take precedence (first key wins).
 
 ```json
 {
   "time": "...",
   "level": "ERROR",
   "msg": "request failed",
+  "request_id": "abc-123",
   "error": {
     "message": "purchase failed: connection refused",
-    "host": "db.example.com",
     "purchase_id": "p-123",
     "stack_trace": [...],
-    "cause": "connection refused"
-  },
-  "host": "db.example.com",
-  "purchase_id": "p-123"
+    "cause": {
+      "message": "connection refused",
+      "host": "db.example.com",
+      "stack_trace": [...]
+    }
+  }
 }
 ```
-
-Attrs from the entire error chain are merged; the outermost error's attrs take precedence (first key wins).
 
 ---
 

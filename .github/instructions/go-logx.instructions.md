@@ -11,7 +11,7 @@ applyTo: '**/*.go,**/go.mod,**/go.sum'
 
 | Package | Role |
 |---|---|
-| `logx` | Logger factory, multi-handler fan-out, error-enriching handler, context helpers |
+| `logx` | Logger factory, multi-handler fan-out, context helpers |
 | `errx` | Structured errors with `[]slog.Attr`, stack trace capture, and `slog.LogValuer` |
 | `attr` | `slog.Attr` construction helpers: `Args`, `Group`, `Merge` |
 | `internal/dedup` | Deduplicates `[]slog.Attr` by key; first occurrence wins (internal use only) |
@@ -58,7 +58,9 @@ File output is always JSON, buffered (8 KiB), and rotated via lumberjack (100 MB
 
 ## Structured Errors (`errx`)
 
-Use `errx` to attach structured `slog.Attr` values and stack traces to errors. The `ErrorHandler` in `logx` automatically extracts these attrs and adds them to log records when `slog.Any("error", err)` is used.
+Use `errx` to attach structured `slog.Attr` values and stack traces to errors. When logged via `slog.Any("error", err)`, all error context appears **nested inside the `"error"` group** — nothing is promoted to the top level of the log record.
+
+This is by design: each error is self-contained. Attrs, stack trace, and the cause chain all live under `"error"`, so they never collide with attrs set on the logger itself (e.g. request-scoped fields from middleware). `*errx.Error` implements `slog.LogValuer` which handles the nested serialization automatically.
 
 ### Error Creation
 
@@ -91,7 +93,7 @@ err = errx.With(
 
 ### Logging Errors
 
-Pass `errx` errors via `slog.Any("error", err)`. The `ErrorHandler` walks the error chain and merges all structured attrs into the log record. The `*errx.Error` value also implements `slog.LogValuer` to emit a rich group with `message`, attrs, `stack_trace`, and `cause`.
+Pass `errx` errors via `slog.Any("error", err)`. The `*errx.Error` value implements `slog.LogValuer` and emits a self-contained group with `message`, attrs, `stack_trace`, and `cause`. Attrs from the entire error chain are merged; the outermost error's attrs take precedence (first key wins).
 
 ```go
 logger.Error("request failed", slog.Any("error", err))
@@ -101,7 +103,7 @@ Avoid logging the same error at multiple levels in the same call stack — log o
 
 ### Extracting Attrs
 
-Use `errx.Attrs(err)` to manually extract `[]slog.Attr` from an error chain when building custom handlers or middleware.
+Use `errx.Attrs(err)` to manually extract `[]slog.Attr` from an error chain when building custom handlers or tooling.
 
 ## Attr Helpers (`attr`)
 
@@ -180,14 +182,61 @@ defer func() {
 defer cleanup() // error is ignored
 ```
 
-## MultiHandler and ErrorHandler
+## MultiHandler
 
-Both are internal to `logx.New` and managed automatically. Do not instantiate them manually in application code. Add custom `slog.Handler` implementations by composing them outside `logx.New` if additional sinks are needed.
+`MultiHandler` is internal to `logx.New` and managed automatically. Do not instantiate it manually in application code. Add custom `slog.Handler` implementations by composing them outside `logx.New` if additional sinks are needed.
 
 ## Testing
 
-- Use `slog.NewJSONHandler(os.Stderr, nil)` or a `bytes.Buffer`-backed handler in unit tests to capture log output without `logx.New`.
-- To test `errx` error attributes, call `errx.Attrs(err)` and assert the returned `[]slog.Attr`.
+Use table-driven tests. Keep test coverage focused on pure logic — avoid testing file I/O or handler wiring in unit tests.
+
+### Test file placement
+
+Place test files next to the code they test, using the same package name (white-box):
+
+```
+attr/args_test.go      → package attr
+attr/merge_test.go     → package attr
+errx/error_test.go     → package errx
+```
+
+### Table-driven pattern
+
+```go
+func Test_Merge(t *testing.T) {
+    tests := []struct {
+        name   string
+        groups [][]slog.Attr
+        want   []slog.Attr
+    }{
+        {name: "empty input", groups: nil, want: nil},
+        {name: "overlapping keys: first wins", groups: [][]slog.Attr{
+            {slog.String("k", "first")},
+            {slog.String("k", "second")},
+        }, want: []slog.Attr{slog.String("k", "first")}},
+    }
+
+    for _, tt := range tests {
+        t.Run(tt.name, func(t *testing.T) {
+            got := Merge(tt.groups...)
+            // assert...
+        })
+    }
+}
+```
+
+### What to test
+
+- `attr.Args` — k/v pairs, raw `slog.Attr`, unpaired key → `!BADKEY`, non-string key → `!BADKEY`
+- `attr.Merge` — dedup first-wins across groups
+- `errx.New/Wrap/With` — message, nil guards, attrs preserved
+- `errx.Attrs` — chain extraction, dedup precedence
+
+### What NOT to test
+
+- `logx.New` — requires file I/O; test only in integration scenarios
+- `MultiHandler` / `ErrorHandler` — covered indirectly through `errx` and `attr` unit tests
+- Example programs
 
 ## Validation
 
