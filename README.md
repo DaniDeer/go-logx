@@ -135,6 +135,8 @@ err = errx.With(
 
 `*errx.Error` implements `slog.LogValuer` and serializes as a self-contained group. Attrs from the entire error chain are merged; the outermost error's attrs take precedence (first key wins).
 
+**Only one `stack_trace` per error chain.** The stack is captured once — at the first `errx.New`, `errx.Wrap`, or `errx.With` call in the chain. Subsequent wraps enrich with context only (no additional `runtime.Callers`). The captured stack is from the innermost `*errx.Error` — the point closest to the error origin — and appears at the top level of the serialized group. Cause chain entries show `message` and attrs only.
+
 ```json
 {
   "time": "...",
@@ -147,8 +149,7 @@ err = errx.With(
     "stack_trace": [...],
     "cause": {
       "message": "connection refused",
-      "host": "db.example.com",
-      "stack_trace": [...]
+      "host": "db.example.com"
     }
   }
 }

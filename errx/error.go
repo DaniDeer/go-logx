@@ -34,10 +34,15 @@ func Wrap(err error, msg string, args ...any) error {
 		return nil
 	}
 
+	var stack []StackFrame
+	if !hasErrxStack(err) {
+		stack = callers(3)
+	}
+
 	return &Error{
-		err: fmt.Errorf("%s: %w", msg, err),
+		err:   fmt.Errorf("%s: %w", msg, err),
 		attrs: attr.Args(args...),
-		stack: callers(3),
+		stack: stack,
 	}
 }
 
@@ -46,11 +51,27 @@ func With(err error, args ...any) error {
 		return nil
 	}
 
+	var stack []StackFrame
+	if !hasErrxStack(err) {
+		stack = callers(3)
+	}
+
 	return &Error{
 		err:   err,
 		attrs: attr.Args(args...),
-		stack: callers(3),
+		stack: stack,
 	}
+}
+
+// hasErrxStack reports whether any *Error in the chain has a non-empty stack.
+func hasErrxStack(err error) bool {
+	for err != nil {
+		if ee, ok := err.(*Error); ok && len(ee.stack) > 0 {
+			return true
+		}
+		err = errors.Unwrap(err)
+	}
+	return false
 }
 
 func (e *Error) Error() string {
