@@ -16,7 +16,7 @@ func (e *Error) LogValue() slog.Value {
 		attrs = append(attrs,
 			slog.Attr{
 				Key:   "stack_trace",
-				Value: stackAttrs(e.stack),
+				Value: slog.AnyValue(stackAttrs(e.stack)),
 			},
 		)
 	}
