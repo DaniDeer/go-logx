@@ -16,6 +16,18 @@ applyTo: '**/*.go,**/go.mod,**/go.sum'
 | `attr` | `slog.Attr` construction helpers: `Args`, `Group`, `Merge` |
 | `internal/dedup` | Deduplicates `[]slog.Attr` by key; first occurrence wins (internal use only) |
 
+## Examples
+
+| Directory | Demonstrates |
+|---|---|
+| `examples/basic` | `logx.New` with console + file output and `errx.Wrap` |
+| `examples/http-service` | HTTP server with request-ID middleware, context logger propagation, structured error handling |
+| `examples/pkg-errors` | `errx` integration with `pkg/errors` (standalone module) |
+| `examples/attr-group` | `attr.Group` for nested attribute grouping (`request.*`, `db.*`) |
+| `examples/console-json` | Text vs. JSON console output (`ConsoleJSON: false` vs `ConsoleJSON: true`) |
+| `examples/context-logger` | `logx.WithLogger` / `logx.FromContext` through a call chain |
+| `examples/errx-attrs` | `errx.Attrs(err)`, `attr.Args`, `attr.Merge` for custom error-reporting pipelines |
+
 ## Logger Initialization
 
 Always initialize via `logx.New(Config)`. It returns a `*slog.Logger`, a `Cleanup` function, and an error.
@@ -246,4 +258,21 @@ func Test_Merge(t *testing.T) {
 go build ./...
 go vet ./...
 go test ./...
+```
+
+When the `logx`, `errx`, or `attr` public API changes, also run all examples to verify they still compile and produce expected output:
+
+```bash
+go run ./examples/basic/
+go run ./examples/attr-group/
+go run ./examples/console-json/
+go run ./examples/context-logger/
+go run ./examples/errx-attrs/
+go run ./examples/http-service/
+```
+
+The `examples/pkg-errors/` example is a standalone module — run it separately from its own directory:
+
+```bash
+cd examples/pkg-errors && go run .
 ```

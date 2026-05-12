@@ -206,3 +206,7 @@ See [`examples/pkg-errors`](examples/pkg-errors/main.go) for a runnable example.
 - [`examples/basic`](examples/basic/main.go) — `logx.New` with console + file output and `errx.Wrap`
 - [`examples/http-service`](examples/http-service/) — HTTP server with request-ID middleware, context logger propagation, and structured error handling per request
 - [`examples/pkg-errors`](examples/pkg-errors/main.go) — integrating `pkg/errors` with `errx` (standalone module)
+- [`examples/attr-group`](examples/attr-group/main.go) — `attr.Group` for nested attribute grouping (`request.*`, `db.*`)
+- [`examples/console-json`](examples/console-json/main.go) — text vs. JSON console output side-by-side (`ConsoleJSON: false` vs `ConsoleJSON: true`)
+- [`examples/context-logger`](examples/context-logger/main.go) — `logx.WithLogger` / `logx.FromContext` through a call chain without threading a logger argument
+- [`examples/errx-attrs`](examples/errx-attrs/main.go) — `errx.Attrs(err)` + `attr.Args` + `attr.Merge` for building custom error-reporting pipelines
