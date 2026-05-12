@@ -113,6 +113,7 @@ This is by design: each error is self-contained. Attrs, stack trace, and the cau
 | `errx.New(msg, args...)` | New error with message, attrs, and stack |
 | `errx.Wrap(err, msg, args...)` | Wrap an error with a new message, attrs, and stack |
 | `errx.With(err, args...)` | Attach attrs and stack to an existing error |
+| `errx.Join(errs...)` | Collect multiple errors into one; returns nil if all inputs are nil |
 
 `args` accepts alternating `key, value` pairs or `slog.Attr` values directly.
 
@@ -129,6 +130,41 @@ err = errx.With(
     "user_id", user.ID,
     "user_email", user.Email,
 )
+```
+
+#### Collecting Multiple Errors (Batch / Validation)
+
+Use `errx.Join` when you want to log all failures from a batch operation or multi-field validation as **one log event**:
+
+```go
+var errs []error
+for _, item := range batch {
+    if err := process(item); err != nil {
+        errs = append(errs, errx.Wrap(err, "item failed", "item_id", item.ID))
+    }
+}
+if joined := errx.Join(errs...); joined != nil {
+    logger.Error("batch failed",
+        slog.Any("errors", joined),
+        slog.Int("failed", len(errs)),
+        slog.Int("total", len(batch)),
+    )
+}
+```
+
+`errx.Join` returns nil if every input is nil, so the `if joined != nil` check is safe even when the batch fully succeeds. Each child error is serialized under an indexed key (`errors.0.*`, `errors.1.*`, ...) via `slog.LogValuer`. `errors.Is` and `errors.As` traverse all children.
+
+```json
+{
+  "level": "ERROR",
+  "msg": "batch failed",
+  "failed": 2,
+  "total": 10,
+  "errors": {
+    "0": { "message": "item failed: connection refused", "item_id": "i-1" },
+    "1": { "message": "item failed: timeout", "item_id": "i-5", "timeout_ms": 5000 }
+  }
+}
 ```
 
 #### Log Output
@@ -210,3 +246,4 @@ See [`examples/pkg-errors`](examples/pkg-errors/main.go) for a runnable example.
 - [`examples/console-json`](examples/console-json/main.go) — text vs. JSON console output side-by-side (`ConsoleJSON: false` vs `ConsoleJSON: true`)
 - [`examples/context-logger`](examples/context-logger/main.go) — `logx.WithLogger` / `logx.FromContext` through a call chain without threading a logger argument
 - [`examples/errx-attrs`](examples/errx-attrs/main.go) — `errx.Attrs(err)` + `attr.Args` + `attr.Merge` for building custom error-reporting pipelines
+- [`examples/multi-error`](examples/multi-error/main.go) — `errx.Join` for batch processing and multi-field validation (one log event per operation)

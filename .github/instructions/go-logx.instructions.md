@@ -27,6 +27,7 @@ applyTo: '**/*.go,**/go.mod,**/go.sum'
 | `examples/console-json` | Text vs. JSON console output (`ConsoleJSON: false` vs `ConsoleJSON: true`) |
 | `examples/context-logger` | `logx.WithLogger` / `logx.FromContext` through a call chain |
 | `examples/errx-attrs` | `errx.Attrs(err)`, `attr.Args`, `attr.Merge` for custom error-reporting pipelines |
+| `examples/multi-error` | `errx.Join` for batch processing and multi-field validation (one log event) |
 
 ## Logger Initialization
 
@@ -81,6 +82,7 @@ This is by design: each error is self-contained. Attrs, stack trace, and the cau
 | `errx.New(msg, args...)` | Create a new error with message, attrs, and stack trace |
 | `errx.Wrap(err, msg, args...)` | Wrap an existing error with a new message, attrs, and stack trace |
 | `errx.With(err, args...)` | Attach attrs and stack trace to an existing error without changing its message |
+| `errx.Join(errs...)` | Collect multiple parallel errors into one; returns nil if all inputs are nil |
 
 ```go
 // New error with structured context
@@ -102,6 +104,30 @@ err = errx.With(
     "user_email", user.Email,
 )
 ```
+
+### Collecting Multiple Errors
+
+Use `errx.Join` to log all failures from a batch or multi-field validation as a **single log event** — never log individual errors in a loop.
+
+```go
+var errs []error
+for _, item := range batch {
+    if err := process(item); err != nil {
+        errs = append(errs, errx.Wrap(err, "item failed", "item_id", item.ID))
+    }
+}
+if joined := errx.Join(errs...); joined != nil {
+    logger.Error("batch failed",
+        slog.Any("errors", joined),
+        slog.Int("failed", len(errs)),
+        slog.Int("total", len(batch)),
+    )
+}
+```
+
+- Returns `nil` when all inputs are nil — safe to use as the only error check after a loop
+- Each child serialized under `errors.0.*`, `errors.1.*`, ... via `slog.LogValuer`
+- `errors.Is` / `errors.As` traverse all children via `Unwrap() []error`
 
 ### Logging Errors
 
@@ -269,6 +295,7 @@ go run ./examples/console-json/
 go run ./examples/context-logger/
 go run ./examples/errx-attrs/
 go run ./examples/http-service/
+go run ./examples/multi-error/
 ```
 
 The `examples/pkg-errors/` example is a standalone module — run it separately from its own directory:
