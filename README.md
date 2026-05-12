@@ -318,6 +318,40 @@ See [`examples/pkg-errors`](examples/pkg-errors/main.go) for a runnable example.
 
 ---
 
+## Logger propagation strategy
+
+**Within a request, always use `logx.FromContext(ctx)`** in service methods. The context carries the fully-enriched logger added by the middleware chain — including fields like `request_id` and `user_id`. `logx.FromContext` falls back to `slog.Default()` when no logger is in the context, so the same method works safely in background jobs, tests, and CLI tools without any branching.
+
+A service's own injected `*slog.Logger` is for **lifecycle events** that run outside any request: startup, shutdown, cache warmup, scheduled jobs. For any method that accepts a `context.Context`, prefer `logx.FromContext(ctx)`.
+
+```go
+type UserService struct {
+    logger *slog.Logger  // lifecycle events only
+}
+
+func NewUserService(logger *slog.Logger) *UserService {
+    return &UserService{
+        logger: logger.With(slog.String("component", "user_service")),
+    }
+}
+
+// Called from a handler → logx.FromContext returns the request-enriched logger.
+// Called from a background job → logx.FromContext returns slog.Default().
+// No branching needed; the context decides.
+func (s *UserService) FetchUsers(ctx context.Context) ([]User, error) {
+    logger := logx.FromContext(ctx)
+    logger.Debug("querying database")
+    // ...
+}
+
+// Lifecycle event — no request context available.
+func (s *UserService) Warmup() {
+    s.logger.Info("warming up cache")
+}
+```
+
+---
+
 ## Examples
 
 - [`examples/basic`](examples/basic/main.go) — `logx.New` with console + file output and `errx.Wrap`

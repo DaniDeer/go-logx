@@ -5,13 +5,11 @@ import (
 	"flag"
 	"fmt"
 	"log/slog"
-	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
-	"github.com/DaniDeer/go-logx/errx"
 	"github.com/DaniDeer/go-logx/logx"
 )
 
@@ -80,56 +78,4 @@ func run(ctx context.Context, cancel context.CancelFunc, httpPort int) int {
 	}
 	logger.Debug("http server shutdown complete")
 	return 0
-}
-
-func handleUsers(
-	ctx context.Context,
-	w http.ResponseWriter,
-	r *http.Request,
-) error {
-
-	logger := logx.FromContext(ctx)
-
-	logger.Debug("fetching users")
-
-	users, err := fetchUsers(ctx)
-
-	if err != nil {
-		return errx.Wrap(
-			err,
-			"failed to fetch users",
-			"component", "user_service",
-		)
-	}
-
-	logger.Info(
-		"users fetched",
-		slog.Int("count", len(users)),
-	)
-
-	for _, user := range users {
-
-		if err := validateUser(user); err != nil {
-
-			return errx.With(
-				fmt.Errorf(
-					"user validation failed: %w",
-					err,
-				),
-				"user_id", user.ID,
-				"user_email", user.Email,
-			)
-		}
-	}
-
-	_, err = w.Write([]byte("ok\n"))
-
-	if err != nil {
-		return errx.Wrap(
-			err,
-			"failed to write response",
-		)
-	}
-
-	return nil
 }

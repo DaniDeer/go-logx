@@ -208,7 +208,31 @@ logger := logx.FromContext(ctx)
 logger.Debug("processing request")
 ```
 
-Use dependency injection (`*slog.Logger` as a function or struct parameter) for top-level wiring. Use `logx.FromContext` for request-scoped propagation within a call chain.
+### Propagation strategy
+
+**In service methods, always use `logx.FromContext(ctx)`.** The context carries the fully-enriched request logger when called from a handler; it falls back to `slog.Default()` when called outside a request (background jobs, tests). No branching needed.
+
+A service's own injected `*slog.Logger` is for lifecycle events that have no request context (startup, shutdown, background jobs).
+
+```go
+type UserService struct {
+    logger *slog.Logger  // lifecycle events only
+}
+
+// Request-scoped: prefers context logger, falls back to slog.Default()
+func (s *UserService) FetchUsers(ctx context.Context) ([]User, error) {
+    logger := logx.FromContext(ctx)
+    logger.Debug("querying database")
+    // ...
+}
+
+// Lifecycle event: no request context
+func (s *UserService) Warmup() {
+    s.logger.Info("warming up cache")
+}
+```
+
+Use dependency injection (`*slog.Logger` as a struct field) for top-level wiring. Use `logx.FromContext` for request-scoped propagation within a call chain.
 
 ## Common Patterns
 
