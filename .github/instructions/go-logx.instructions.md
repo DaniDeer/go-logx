@@ -28,6 +28,7 @@ applyTo: '**/*.go,**/go.mod,**/go.sum'
 | `examples/context-logger` | `logx.WithLogger` / `logx.FromContext` through a call chain |
 | `examples/errx-attrs` | `errx.Attrs(err)`, `attr.Args`, `attr.Merge` for custom error-reporting pipelines |
 | `examples/multi-error` | `errx.Join` for batch processing and multi-field validation (one log event) |
+| `examples/build-info` | `Config.DefaultAttrs` + `Config.Build` for service identity and build metadata on every log line |
 
 ## Logger Initialization
 
@@ -66,8 +67,34 @@ defer func() {
 | `ConsoleJSON` | `bool` | Use JSON format for console (default: text) |
 | `File` | `string` | Log file path; empty disables file output |
 | `FileLevel` | `slog.Level` | Minimum level for file output |
+| `DefaultAttrs` | `[]slog.Attr` | Attrs on every log line (service, region, env, …) |
+| `Build` | `*BuildInfo` | Adds `build.*` group to every log line; `build.go` always included automatically |
 
 File output is always JSON, buffered (8 KiB), and rotated via lumberjack (100 MB / 5 backups / 30 days / compressed).
+
+### Static Attrs and Build Info
+
+Use `DefaultAttrs` and `Build` to stamp every log line with process-wide context — essential for canary and rolling deployments where multiple versions run simultaneously:
+
+```go
+logger, cleanup, err := logx.New(logx.Config{
+    Level:   slog.LevelInfo,
+    Console: true,
+    DefaultAttrs: []slog.Attr{
+        slog.String("service", "order-api"),
+        slog.String("region",  "eu-west-1"),
+    },
+    Build: &logx.BuildInfo{
+        Version: version,   // -ldflags "-X main.version=v1.2.3"
+        Commit:  commit,    // -ldflags "-X main.commit=$(git rev-parse --short HEAD)"
+        Date:    buildDate, // -ldflags "-X main.date=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    },
+})
+```
+
+- `DefaultAttrs nil/empty` and `Build == nil` → zero overhead, existing behaviour unchanged
+- `DefaultAttrs` is applied before `Build`; build fields always appear last and consistently
+- In dev (no ldflags), use `runtime/debug.ReadBuildInfo()` to read `vcs.revision` and `vcs.time` as fallbacks
 
 ## Structured Errors (`errx`)
 
@@ -296,6 +323,7 @@ go run ./examples/context-logger/
 go run ./examples/errx-attrs/
 go run ./examples/http-service/
 go run ./examples/multi-error/
+go run ./examples/build-info/
 ```
 
 The `examples/pkg-errors/` example is a standalone module — run it separately from its own directory:

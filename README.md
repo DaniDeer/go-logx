@@ -60,19 +60,96 @@ func main() {
 
 #### Config
 
-| Field | Type | Description |
-|---|---|---|
-| `Level` | `slog.Level` | Minimum log level for console output |
-| `AddSource` | `bool` | Include source file and line number |
-| `Console` | `bool` | Enable console output (writes to `os.Stderr`) |
-| `ConsoleJSON` | `bool` | Use JSON format for console (default: text) |
-| `File` | `string` | Log file path; empty disables file output |
-| `FileLevel` | `slog.Level` | Minimum log level for file output |
+| Field          | Type          | Description                                                                                                |
+| -------------- | ------------- | ---------------------------------------------------------------------------------------------------------- |
+| `Level`        | `slog.Level`  | Minimum log level for console output                                                                       |
+| `AddSource`    | `bool`        | Include source file and line number                                                                        |
+| `Console`      | `bool`        | Enable console output (writes to `os.Stderr`)                                                              |
+| `ConsoleJSON`  | `bool`        | Use JSON format for console (default: text)                                                                |
+| `File`         | `string`      | Log file path; empty disables file output                                                                  |
+| `FileLevel`    | `slog.Level`  | Minimum log level for file output                                                                          |
+| `DefaultAttrs` | `[]slog.Attr` | Attrs attached to every log line (service name, region, env, …)                                            |
+| `Build`        | `*BuildInfo`  | Adds a `build.*` group to every log line; `build.go` (Go runtime version) is always included automatically |
+
+`BuildInfo` fields: `Version`, `Commit`, `Date` — typically set via `-ldflags` at build time.
 
 File output is always JSON, buffered (8 KiB), and rotated automatically:
+
 - **Max size:** 100 MB per file
 - **Max backups:** 5 compressed files
 - **Max age:** 30 days
+
+#### Static Attrs and Build Info
+
+Use `DefaultAttrs` and `Build` to stamp every log line with process-wide context. This is essential in canary and rolling deployments where multiple versions run simultaneously:
+
+```go
+var (
+    version   string // set via -ldflags "-X main.version=v1.2.3"
+    commit    string // set via -ldflags "-X main.commit=$(git rev-parse --short HEAD)"
+    buildDate string // set via -ldflags "-X main.date=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+)
+
+// In main() or init():
+logger, cleanup, err := logx.New(logx.Config{
+    Level:   slog.LevelInfo,
+    Console: true,
+    DefaultAttrs: []slog.Attr{
+        slog.String("service", "order-api"),
+        slog.String("env",     "production"),
+        slog.String("region",  "eu-west-1"),
+    },
+    Build: &logx.BuildInfo{
+        Version: version,   // set via -ldflags "-X main.version=v1.2.3"
+        Commit:  commit,    // set via -ldflags "-X main.commit=$(git rev-parse --short HEAD)"
+        Date:    buildDate, // set via -ldflags "-X main.date=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    },
+})
+```
+
+Use `-ldflags` to inject build info at compile time:
+
+```BASH
+go build -ldflags "-X my/package/build.GitSHA=$(git rev-parse HEAD) -X my/package/build.BuildTime=$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+```
+
+Where `my/package/build.GitSHA` and `my/package/build.BuildTime` are `string` variables in your code in the respective package. In case you initialize the logger in the `main` package, you can set them as `main.GitSHA` and `main.BuildTime`.
+
+If you build with Go 1.20+, you can also use the `debug.ReadBuildInfo` API to read build info from the binary at runtime and populate the `BuildInfo` struct without needing `-ldflags`. See [`examples/build-info`](examples/build-info/main.go) for a runnable example.
+
+If you build with Docker, you can use `ARG` and `--build-arg` to pass build metadata from the Docker build context into your Go binary via `-ldflags`. In Docker builds commit hashes are not available by default, but you can use `git rev-parse` in your build script to capture it and pass it as a build arg or forward it from a GH Action step into the Docker build.
+
+Every log line carries:
+
+```
+service=order-api env=production region=eu-west-1 build.version=v1.2.3 build.commit=abc123 build.date=2024-01-15T10:00:00Z build.go=go1.26.2
+```
+
+`build.go` (Go runtime version) is added automatically — no ldflags needed for it.
+
+##### What to Log?
+
+- Runtime environment: `production`, `staging`, `development`
+- Host information: `hostname`, `ip_address`, `instance_id`, `OS`, `arch`, `kernel_version`, etc.
+- Service name: `order-api`, `user-service`, etc.
+- Region: `eu-west-1`, `us-east-1`, etc.
+- Timezone: `UTC`, `America/New_York`, etc.
+- Node/Container or pod name (for Kubernetes): `node-42`, `pod-abc123`, etc.
+- Build info: `build.version`, `build.commit`, `build.date`, `build.go`
+
+##### What to Log - HTTP Requests
+
+- Request ID: `request_id` (generated per request, e.g. via middleware)
+- Request duration: `duration_ms` (in milliseconds, e.g. via middleware)
+- Request headers: `User-Agent`, `Content-Type`, etc. (be mindful of PII and sensitive data)
+- Relevant cookies for the request: `session_id`, `auth_token` (presence), etc. (again, be mindful of PII and sensitive data)
+- Number of bytes received in the request body: `request_size_bytes`
+- User ID: `user_id` (if authenticated)
+- Response headers: `Content-Type`, `Content-Length`, etc. (be mindful of PII and sensitive data)
+- Response status code: `status_code` (e.g., 200, 404, 500)
+- Number of bytes sent in the response: `response_size_bytes`
+
+> Rule of Thumb: Don´t log everything in every app, add fields as they become useful!
 
 #### Context Helpers
 
@@ -108,12 +185,12 @@ This is by design: each error is self-contained. Attrs, stack trace, and the cau
 
 #### Creating Errors
 
-| Function | Description |
-|---|---|
-| `errx.New(msg, args...)` | New error with message, attrs, and stack |
-| `errx.Wrap(err, msg, args...)` | Wrap an error with a new message, attrs, and stack |
-| `errx.With(err, args...)` | Attach attrs and stack to an existing error |
-| `errx.Join(errs...)` | Collect multiple errors into one; returns nil if all inputs are nil |
+| Function                       | Description                                                         |
+| ------------------------------ | ------------------------------------------------------------------- |
+| `errx.New(msg, args...)`       | New error with message, attrs, and stack                            |
+| `errx.Wrap(err, msg, args...)` | Wrap an error with a new message, attrs, and stack                  |
+| `errx.With(err, args...)`      | Attach attrs and stack to an existing error                         |
+| `errx.Join(errs...)`           | Collect multiple errors into one; returns nil if all inputs are nil |
 
 `args` accepts alternating `key, value` pairs or `slog.Attr` values directly.
 
@@ -156,14 +233,18 @@ if joined := errx.Join(errs...); joined != nil {
 
 ```json
 {
-  "level": "ERROR",
-  "msg": "batch failed",
-  "failed": 2,
-  "total": 10,
-  "errors": {
-    "0": { "message": "item failed: connection refused", "item_id": "i-1" },
-    "1": { "message": "item failed: timeout", "item_id": "i-5", "timeout_ms": 5000 }
-  }
+	"level": "ERROR",
+	"msg": "batch failed",
+	"failed": 2,
+	"total": 10,
+	"errors": {
+		"0": { "message": "item failed: connection refused", "item_id": "i-1" },
+		"1": {
+			"message": "item failed: timeout",
+			"item_id": "i-5",
+			"timeout_ms": 5000
+		}
+	}
 }
 ```
 
@@ -213,11 +294,11 @@ merged := attr.Merge(outerAttrs, innerAttrs)
 
 `errx.Wrap` and `errx.With` detect existing stack traces before calling `runtime.Callers`. Detection uses three layers:
 
-| Layer | Interface / Method | Works for |
-|---|---|---|
-| 1 | `stackProvider` — `StackFrames() []StackFrame` | `*errx.Error` and custom types that normalize to errx frames |
-| 2 | `stackTracer` — `StackTrace() any` | New code that explicitly adopts this contract |
-| 3 | Reflect fallback | [`pkg/errors`](https://pkg.go.dev/github.com/pkg/errors), [`cockroachdb/errors`](https://pkg.go.dev/github.com/cockroachdb/errors), and similar (concrete `StackTrace()` return type prevents interface matching) |
+| Layer | Interface / Method                             | Works for                                                                                                                                                                                                         |
+| ----- | ---------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1     | `stackProvider` — `StackFrames() []StackFrame` | `*errx.Error` and custom types that normalize to errx frames                                                                                                                                                      |
+| 2     | `stackTracer` — `StackTrace() any`             | New code that explicitly adopts this contract                                                                                                                                                                     |
+| 3     | Reflect fallback                               | [`pkg/errors`](https://pkg.go.dev/github.com/pkg/errors), [`cockroachdb/errors`](https://pkg.go.dev/github.com/cockroachdb/errors), and similar (concrete `StackTrace()` return type prevents interface matching) |
 
 ```go
 import pkgerrors "github.com/pkg/errors"
@@ -247,3 +328,4 @@ See [`examples/pkg-errors`](examples/pkg-errors/main.go) for a runnable example.
 - [`examples/context-logger`](examples/context-logger/main.go) — `logx.WithLogger` / `logx.FromContext` through a call chain without threading a logger argument
 - [`examples/errx-attrs`](examples/errx-attrs/main.go) — `errx.Attrs(err)` + `attr.Args` + `attr.Merge` for building custom error-reporting pipelines
 - [`examples/multi-error`](examples/multi-error/main.go) — `errx.Join` for batch processing and multi-field validation (one log event per operation)
+- [`examples/build-info`](examples/build-info/main.go) — `Config.DefaultAttrs` + `Config.Build` for stamping every log line with service identity and build metadata

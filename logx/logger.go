@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"runtime"
 
 	"gopkg.in/natefinch/lumberjack.v2"
 )
@@ -86,6 +87,28 @@ func New(config Config) (*slog.Logger, Cleanup, error) {
 
 	// Create a new slog.Logger with the combined handler. The logger will use the MultiHandler to output logs to all configured destinations (console and/or file).
 	logger := slog.New(handler)
+
+	// Attach process-wide default attrs (service, region, env, etc.) to the logger.
+	if len(config.DefaultAttrs) > 0 {
+		args := make([]any, len(config.DefaultAttrs))
+		for i, a := range config.DefaultAttrs {
+			args[i] = a
+		}
+		logger = logger.With(args...)
+	}
+
+	// Attach build info as a "build" group; runtime.Version() is always included.
+	if config.Build != nil {
+		logger = logger.With(slog.Attr{
+			Key: "build",
+			Value: slog.GroupValue(
+				slog.String("version", config.Build.Version),
+				slog.String("commit", config.Build.Commit),
+				slog.String("date", config.Build.Date),
+				slog.String("go", runtime.Version()),
+			),
+		})
+	}
 
 	// Define a cleanup function that will be returned to the caller. This function will be responsible for flushing buffers and closing any resources when the logger is no longer needed.
 	cleanup := func() error {
