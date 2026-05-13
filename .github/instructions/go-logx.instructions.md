@@ -22,6 +22,7 @@ applyTo: '**/*.go,**/go.mod,**/go.sum'
 |---|---|
 | `examples/basic` | `logx.New` with console + file output and `errx.Wrap` |
 | `examples/http-service` | HTTP server with request-ID middleware, context logger propagation, structured error handling |
+| `examples/http-service-logctx` | HTTP server using `LogContext` in `r.Context()`: middlewares/handlers enrich it; logging middleware emits one consolidated log line per request |
 | `examples/pkg-errors` | `errx` integration with `pkg/errors` (standalone module) |
 | `examples/attr-group` | `attr.Group` for nested attribute grouping (`request.*`, `db.*`) |
 | `examples/console-json` | Text vs. JSON console output (`ConsoleJSON: false` vs `ConsoleJSON: true`) |
@@ -346,6 +347,7 @@ go run ./examples/console-json/
 go run ./examples/context-logger/
 go run ./examples/errx-attrs/
 go run ./examples/http-service/
+go run ./examples/http-service-logctx/
 go run ./examples/multi-error/
 go run ./examples/build-info/
 ```

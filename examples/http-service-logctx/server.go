@@ -18,28 +18,28 @@ type server struct {
 	userService *UserService
 }
 
-func NewServer(port int, cancel context.CancelFunc, logger *slog.Logger) *server {
-
+// NewServer wires the middleware chain and registers routes.
+// requestLogger is outermost so auth and handler logs are captured in the
+// consolidated request log line it emits after the chain returns.
+func NewServer(port *int, cancel context.CancelFunc, logger *slog.Logger) *server {
 	mux := http.NewServeMux()
 
 	srv := &http.Server{
-		Addr:    fmt.Sprintf(":%d", port),
+		Addr: fmt.Sprintf(":%d", *port),
 		// requestIDMiddleware is outermost so the ID is available on all paths including auth rejections.
-		Handler: requestIDMiddleware()(reqLoggerMiddleware(logger)(authMiddleware()(mux))),
+		Handler: requestIDMiddleware()(requestLogger(logger)(authMiddleware()(mux))),
 	}
 
 	s := &server{
 		httpServer:  srv,
 		cancel:      cancel,
-		logger:      logger,
+		logger:      logger.With(slog.String("component", "http_server")),
 		userService: NewUserService(logger),
 	}
 
-	// Define routes and handlers for the HTTP server.
-	mux.HandleFunc("/users", s.handleUsers)
+	mux.HandleFunc("GET /users", s.handleUsers)
 
 	return s
-
 }
 
 func (s *server) Start() error {
@@ -49,14 +49,12 @@ func (s *server) Start() error {
 	}
 
 	if tcpAddr, ok := ln.Addr().(*net.TCPAddr); ok {
-		port := tcpAddr.Port
-		s.logger.Info("http server started", slog.Int("port", port))
+		s.logger.Info("http server started", slog.Int("port", tcpAddr.Port))
 	} else {
 		s.logger.Info("http server started", slog.String("address", ln.Addr().String()))
 	}
 
 	if err := s.httpServer.Serve(ln); !errors.Is(err, http.ErrServerClosed) {
-		s.logger.Error("http server failed", slog.Any("error", err))
 		return errx.Wrap(err, "http server failed", "component", "http_server")
 	}
 
@@ -65,7 +63,6 @@ func (s *server) Start() error {
 
 func (s *server) Shutdown(ctx context.Context) error {
 	if err := s.httpServer.Shutdown(ctx); err != nil {
-		s.logger.Error("http server shutdown failed", slog.Any("error", err))
 		return errx.Wrap(err, "http server shutdown failed", "component", "http_server")
 	}
 	return nil

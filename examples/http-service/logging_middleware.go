@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/DaniDeer/go-logx/logx"
-	"github.com/google/uuid"
 )
 
 // http.ResponseWriter is an interface, so we wrap it to capture the status code
@@ -69,7 +68,7 @@ func reqLoggerMiddleware(logger *slog.Logger) func(http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 
 			reqLogger := logger.With(
-				slog.String("request_id", uuid.NewString()),
+				slog.String("request_id", requestIDFrom(r.Context())),
 				slog.String("method", r.Method),
 				slog.String("path", r.URL.Path),
 				slog.String("remote_addr", r.RemoteAddr),

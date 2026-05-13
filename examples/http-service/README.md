@@ -8,6 +8,7 @@ A minimal HTTP service demonstrating how to wire `go-logx` into a real service: 
 |---|---|
 | `main.go` | Entry point — logger init, graceful shutdown |
 | `server.go` | HTTP server, middleware chain wiring, route registration |
+| `requestid_middleware.go` | `requestIDMiddleware`, `requestIDFrom` helper |
 | `logging_middleware.go` | `reqLoggerMiddleware`, spy wrappers, `responseWriterWithContext` |
 | `auth_middleware.go` | `authMiddleware`, Bearer token extraction |
 | `handlers.go` | `UserService` (dual-logger pattern), request handler, validation |
@@ -17,6 +18,9 @@ A minimal HTTP service demonstrating how to wire `go-logx` into a real service: 
 ```
 Incoming request
       │
+      ▼
+requestIDMiddleware          reads X-Request-ID header; generates UUID if absent
+      │                      stores ID in r.Context(); echoes ID in response header
       ▼
 reqLoggerMiddleware          adds: request_id, method, path, remote_addr
       │                      logs: "request started"
@@ -33,6 +37,8 @@ reqLoggerMiddleware          logs: "request completed" with duration,
 ```
 
 Each middleware layer enriches the logger stored in the `ResponseWriter` context — no layer needs to know about the others.
+
+Note: `requestIDMiddleware` is the exception — it stores the request ID in `r.Context()` because the ID is generated before the logger exists. `reqLoggerMiddleware` reads it via `requestIDFrom(r.Context())` and includes it in the enriched logger.
 
 ## Key principles
 

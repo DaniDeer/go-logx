@@ -356,6 +356,7 @@ func (s *UserService) Warmup() {
 
 - [`examples/basic`](examples/basic/main.go) — `logx.New` with console + file output and `errx.Wrap`
 - [`examples/http-service`](examples/http-service/) — HTTP server with request-ID middleware, context logger propagation, and structured error handling per request
+- [`examples/http-service-logctx`](examples/http-service-logctx/) — HTTP server using a mutable `LogContext` in `r.Context()`: middlewares and handlers enrich it; the logging middleware emits one consolidated log line per request
 - [`examples/pkg-errors`](examples/pkg-errors/main.go) — integrating `pkg/errors` with `errx` (standalone module)
 - [`examples/attr-group`](examples/attr-group/main.go) — `attr.Group` for nested attribute grouping (`request.*`, `db.*`)
 - [`examples/console-json`](examples/console-json/main.go) — text vs. JSON console output side-by-side (`ConsoleJSON: false` vs `ConsoleJSON: true`)
